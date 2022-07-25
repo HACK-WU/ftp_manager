@@ -26,8 +26,8 @@ NORemove="cmds_allowed=ABOR,CWD,LIST,MDTM,MKD,NLST,PASS,PASV,PORT,PWD,QUIT,RETR,
 r_NODown="r_NODown"			#只读，并且不能下载,只对匿名用于有效	
 r_Upload="r_Upload"			#只读，只能上传文件，这个只对匿名用户有效
 rwx="rwx"					#有增删改权限
-rwxNORemove="rwxNORemove"	#有增和改的权利，但不能删除
-rwxNODown="rwxNODown"		#有增和改的权限，但不能下载
+rwx_NORemove="rwx_NORemove"	#有增和改的权利，但不能删除
+rwx_NODown="rwx_NODown"		#有增和改的权限，但不能下载
 rwxSBIT="rwxSBIT"			#只能对自己的文件进行增删改，他人的文件，无法操作
 rwxSBIT_NODown="rwxSBIT_NODown"	#不能对其他人的文件进行操作，并且无法下载。
 
@@ -63,11 +63,11 @@ echo "配置文件初始化完毕：$config_file"
 
 #############################目录授权###################################
 
-function dir_permission {	
-	local user=$1
-	local dir=$2
-	[[ "$1" == "ftp"||"$1" == "anonymous" ]] && chmod 757 $dir ; return 0	#匿名用户授权
-	
+function dir_permission {
+	[ -d $2  ] || mkdir $2
+        chmod $1 $2 	#匿名用户授权
+	echo "目录授权完毕："
+	ls -l -d $2	
 
 }
 
@@ -79,18 +79,54 @@ function local_user_dir_permission {
 ##############################匿名用户配置###################################
 function anon_conf {
 	local permission=$1				#权限
-	local user=ftp					#用户名
+	local user=ftp					#用户名	
 	set +u
-	[ -z $2 ]&& local anon_root=/var/ftp/pub||local anon_root=$2;echo -e "anon_root=$anon_root" >> $config_file  #指定用户家目录,并写入配置文件
+	[ -z $2 ] && local anon_root=/data/ftp ||local anon_root=$2;echo -e "anon_root=$anon_root" >> $config_file  #指定用户家目录,并写入配置文件
 	set -u
-	dir_permission ftp $anon_root	#对目录进行授权
+
 #	r_NODown="r_NODown"         #只读，并且不能下载 
 #	r_Upload="r_Upload"         #只读，只能上传文件，这个只对匿名用户有效
 #	rwx="rwx"                   #有增删改权限
 #	rwxNORemove="rwxNORemove"   #有增和改的权利，但不能删除
 #	rwxNODown="rwxNODown"       #有增和改的权限，但不能下载
 	
-	case  permission in
+		
+	function r_NODown {
+		echo "权限： 只读，并且不能下载 "
+		echo -e  "$NODown" >> $config_file	
+		dir_permission 755 $anon_root/pub	#对目录进行授权
+	}
+	
+	function r_Upload {
+		echo "权限：可读，只能上传文件"
+		echo "anon_upload_enable=YES" >> $config_file
+		echo "anon_mkdir_write_enable=YES" >> $config_file	
+		dir_permission 757 $anon_root/pub	#对目录进行授权
+	}
+
+	function rwx {
+		echo "权限：有增删改权限"
+		echo "anon_upload_enable=YES" >> $config_file
+		echo "anon_mkdir_write_enable=YES" >> $confgif_file	
+		echo "anon_other_write_enable=YES" >> $config_file
+		dir_permission 757 $anon_root/pub	#对目录进行授权
+	}
+
+	function rwx_NORemove {
+		echo "权限：有增和改的权利，但不能删除"
+		rwx
+		echo -e "$NORemove" >> $config_file
+		dir_permission 757 $anon_root/pub	#对目录进行授权
+	}
+	
+	function rwx_NODown {
+		echo "权限：有增和改的权限，但不能下载"
+		rwx
+		echo -e "$NODown" >> $config_file
+		dir_permission 757 $anon_root/pub	#对目录进行授权
+	}
+	
+	case  $permission in
 		$r_NODown)  r_NODown	;;
 		$r_Upload)	r_Upload	;;
 		$rwx)		rwx			;;
@@ -99,41 +135,6 @@ function anon_conf {
 		*)	echo "没有这个权限;执行失败！！";return 1 ;;
 	esac	
 	echo "匿名用户配置完成：$permission !"	
-	function r_NODown	{
-		echo "只读，并且不能下载 "
-		echo -e  "$NODown" >> $config_file
-	}
-	
-	function r_Upload {
-		echo "只读，只能上传文件"
-		echo -e "
-		anon_upload_enable=YES
-		anon_mkdir_write_enable=YES
-		" >> $config_file	
-	}
-
-	function rwx {
-		echo "有增删改权限"
-		echo -e "
-		anon_upload_enable=YES
-		anon_mkdir_write_enable=YES	
-		anon_other_write_enable=YES
-		" >> $config_file
-	}
-
-	function rwx_NORemove {
-		echo "有增和改的权利，但不能删除"
-		rwx
-		echo -e "$NORemove" >> $config_file
-	}
-	
-	function rwx_NODown {
-		echo "有增和改的权限，但不能下载"
-		rwx
-		echo -e "$NODown" >> $config_file
-	}
-
-	
 }
 
 ##############################本地用户配置########################################
@@ -154,7 +155,7 @@ function local_conf {
 #rwxSBIT="rwxSBIT"			#只能对自己的文件进行增删改，他人的文件，无法操作
 #rwxSBIT_NODown="rwxSBIT_NODown"	#不能对其他人的文件进行操作，并且无法下载。
 
-	case  permission in
+	case  $permission in
 		$rwx_NORemove)	rwx_NORemove ;;
 		$rwx_NODown)	rwx_NODown   ;;
 		$rwxSBIT)		rwx_SBIT	;;
@@ -259,4 +260,19 @@ function open_virtual_login {  #开启虚拟用户登录
 }
 
 
+#	r_NODown="r_NODown"         #只读，并且不能下载 
+#	r_Upload="r_Upload"         #只读，只能上传文件，这个只对匿名用户有效
+#	rwx="rwx"                   #有增删改权限
+#	rwxNORemove="rwxNORemove"   #有增和改的权利，但不能删除
+#	rwxNODown="rwxNODown"       #有增和改的权限，但不能下载
+anon_conf r_Upload
+
+
+if systemctl status vsftpd > /dev/null ;then
+	systemctl restart vsftpd.service
+	echo "vsftpd重启完成！！"
+else
+	systemctl restart vsftpd.service
+	echo "vsftp以及启动！！"
+fi
 
