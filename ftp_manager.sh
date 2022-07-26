@@ -224,7 +224,7 @@ function open_chroot_list {   #开启用户禁锢，白名单
 
 ##################################虚拟用户配置################################
 function create_vir_user_db {  #创建虚拟用户密码，数据库类型文件
-	local user_and_passwd="hack\n123\nlisi\n123\n"
+	local user_and_passwd="hack\n123\nlisi\n123\naa\n123\nbb\n456"
 
 	local vir_user_txt="$chroot_vsftpd/vir_user.txt"	#用户密码，明文文件
 	> $vir_user_txt
@@ -234,9 +234,9 @@ function create_vir_user_db {  #创建虚拟用户密码，数据库类型文件
 	echo "数据库类型文件，创建完毕：$chroot_vsftpd/vir_user.db"	
 	chmod 600 $chroot_vsftpd/vir_user.db	#授权完毕	
 }
-
+proxy_user=NULL
 function create_proxy_user {  #创建代理用户
-	local proxy_user=virtual
+	proxy_user=virtual
 	local proxy_user_home=/var/ftpvirtual	#代理用户家目录
 			
 	function get_proxy_user { #获取代理用户名
@@ -247,7 +247,7 @@ function create_proxy_user {  #创建代理用户
 		done
 		useradd -d $proxy_user_home -s /sbin/nologin $new_name &> /dev/null #给系统添加这个用户
 		echo "代理用户$new_name创建完毕"
-
+		proxy_user=$new_name
 	}
 		
 	if id $proxy_user &> /dev/null ;then
@@ -259,7 +259,7 @@ function create_proxy_user {  #创建代理用户
 			y) get_proxy_user; break ;;
 			n) 	useradd -d $proxy_user_home -s /sbin/nologin $proxy_user
 				echo "创建默认代理用户名为： $proxy_user"
-				return 0 ;;
+				break ;;
 			*)  echo "输入错误！"  ;;
 			esac
 		done	
@@ -267,7 +267,7 @@ function create_proxy_user {  #创建代理用户
 		useradd -d $proxy_user_home -s /sbin/nologin $proxy_user
 		echo "创建默认代理用户名为： $proxy_user"
 	fi	
-
+	echo "家目录为：$proxy_user_home"
 }
 
 function open_virtual_login {  #开启虚拟用户登录
@@ -293,18 +293,30 @@ account  sufficient  pam_userdb.so  db=$chroot_vsftpd/vir_user
 	
 	grep -v "#" $vsftpd  >> $vsftpd_pam2			#用于本地用户和虚拟用户同时登录的配置文件
 	sed -i "s/$pam_service=vsftpd/$pam_service=$pam_conf/g"	$config_file	#更改vsftpd.conf配置文件
+	create_vir_user_db	#创建用户密码文件			
+	create_proxy_user	#创建代理用户	
+	echo "guest_enable=YES" >> $config_file
+	echo "guest_username=$proxy_user" >> $config_file
+	echo "virtual_use_local_privs=NO" >> $config_file
 	echo "虚拟用户开启完毕！！！"
 }
 
 #local_conf rwxSBIT_NODown zhangsan  
-#create_vir_user_db
-#create_proxy_user
-open_virtual_login vsftpd.pam2
-if systemctl status vsftpd > /dev/null ;then
-	systemctl restart vsftpd.service
-	echo "vsftpd重启完成！！"
-else
-	systemctl restart vsftpd.service
-	echo "vsftp已经启动！！"
-fi
+open_virtual_login vsftpd.pam
+#open_chroot_list 
+
+function start_service {
+
+	if systemctl status vsftpd > /dev/null ;then
+		systemctl restart vsftpd.service
+		echo "vsftpd重启完成！！"
+	else
+		systemctl restart vsftpd.service
+		echo "vsftp已经启动！！"
+	fi
+
+}
+start_service
+
+
 
