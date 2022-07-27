@@ -16,6 +16,9 @@
 
 set -u
 
+ftp_manager_log=/var/log/ftp_manager.log	#日志功能
+[ -f $ftp_manager_log ]||touch /var/log/ftp_manager.log
+
 chroot_vsftpd="/etc/vsftpd"     #vsftpd服务，根目录
 config_file="$chroot_vsftpd/vsftpd.conf"  #vsftpd服务，配置文件
 
@@ -32,7 +35,7 @@ rwxSBIT="rwxSBIT"			#只能对自己的文件进行增删改，他人的文件�
 rwxSBIT_NODown="rwxSBIT_NODown"	#不能对其他人的文件进行操作，并且无法下载。
 
 ###########
-
+function init {
 default_conf="
 anonymous_enable=YES\n
 local_enable=YES\n
@@ -61,6 +64,7 @@ echo -e  $default_conf > $config_file	#写入新的配置文件。
 [ -e /etc/vsftpd/vsftpd_user_conf ]||mkdir /etc/vsftpd/vsftpd_user_conf
 
 echo "配置文件初始化完毕：$config_file"
+}
 
 #############################目录授权###################################
 
@@ -88,6 +92,8 @@ function local_user_dir_permission {   #参数:  $1:用户   $2：用户组（�
 
 ##############################匿名用户配置###################################
 function anon_conf {
+	
+   function per {			#参数: $1:权限;  $2: 根目录(可以省略) 	
 	local permission=$1				#权限
 	local user=ftp					#用户名	
 	set +u
@@ -103,7 +109,7 @@ function anon_conf {
 	
 		
 	function r_NODown {
-		echo "权限： 只读，并且不能下载 "
+		echo -e "\033[33m权限： 只读，并且不能下载\033[0m"
 		echo -e  "$NODown" >> $config_file	
 		dir_permission 755 $anon_root/pub	#对目录进行授权
 	}
@@ -145,37 +151,54 @@ function anon_conf {
 		$rwx_NODown)	rwx_NODown   ;;
 		*)	echo "没有这个权限;执行失败！！";return 1 ;;
 	esac	
-	echo "匿名用户配置完成：$permission !"	
+	echo  -e  "\033[33m匿名用户配置完成：$permission !\033[0m"	
+    }
+	
+	local permission=$(whiptail --title "匿名用户配置"   --radiolist \
+	"请选择权限(回车确认)：" 15 60 6 \
+	"read" "只读" ON  \
+	"r_NODown" "只读，不能下载" OFF \
+	"r_Upload" "只读，允许上传文件" OFF \
+	"rwx" "增删改" OFF \
+	"rwx_NORemove" "增和改，不能删除" OFF \
+	"rwx_NODown" "增和改，不能删除和下载" OFF 3>&1 1>&2 2>&3) #权限选择
+       	
+	[ "$permission" == "read" ] && return 0
+
+	local chroot_path=$(whiptail --title "默认目录" --inputbox "请输入默认目录绝对路径(/var/ftp)：" 10 60 /var/ftp/ 3>&1 1>&2 2>&3)  #根目录选择
+	per $permission $chroot_path  
 }
 
 ##############################本地用户配置########################################
-function local_conf {	#参数： $1:权限   $2:本地用户  $3:默认根目录(可以省略)
+local_ftpgroup=ftpgroup
+function local_conf {	
+	
+   function per {	#参数： $1:权限    $2:默认根目录(可以省略)
 	[ $(grep -c "/sbin/nologin" /etc/shells  ) -eq 0 ] &&  echo "/sbin/nologin" >> /etc/shells 
 	local permission=$1				#权限
 	set +u
-		if [ -z $3  ];then
+		if [ -z $2  ];then
 			local local_root=NO
 		else
-			local local_root=$3 
+			local local_root=$2 
 			echo -e "local_root=$local_root" >> $config_file;
-			mkdir $local_root
+			mkdir -p  $local_root
 		fi
 	set -u
 	
 	if [ !  "$local_root" == "NO" ];then	
-		local local_ftpgroup="ftpgroup"		
+		local_ftpgroup="ftpgroup"		
 		groupadd $local_ftpgroup		#创建用户组
 		setfacl -m g:$local_ftpgroup:rwx  $local_root	#对用户目录进行授权
-		echo "目录授权完毕："
+		echo -e  "目录最大权限以授予\033[33m$local_ftpgroup用户组\033[0m！"
 		getfacl -p $local_root | grep "ftpgroup"
-		local_user_dir_permission $2 $local_ftpgroup
 	fi
 	
 #	rwx_NORemove="rwx_NORemove"   #有增和改的权利，但不能删除
 #	rwx_NODown="rwx_NODown"       #有增和改的权限，但不能下载
 #	rwxSBIT="rwxSBIT"			#只能对自己的文件进行增删改，他人的文件，无法操作
 #	rwxSBIT_NODown="rwxSBIT_NODown"	#不能对其他人的文件进行操作，并且无法下载。
-
+		
 	function rwx_NORemove {
 		echo  -e "\033[33m有增和改的权利，但不能删除\033[0m"
 		echo -e "$NORemove" >> $config_file
@@ -201,13 +224,55 @@ function local_conf {	#参数： $1:权限   $2:本地用户  $3:默认根目录
 	}
 	
 	case  $permission in
+		rwx) echo "增删改权限！！" ;;
 		$rwx_NORemove)	rwx_NORemove ;;
 		$rwx_NODown)	rwx_NODown   ;;
 		$rwxSBIT)	rwxSBIT	;;
 		$rwxSBIT_NODown) rwxSBIT_NODown ;;
 		*)	echo "没有这个权限;执行失败！！";exit ;;
 	esac	
-	echo "本地用户配置完成: $permission !"
+	echo  -e  "\033[33m本地用户配置完成: $permission !\033[0m"
+    }
+	
+   function chroot_path {	#指定根目录
+	local OPTION=$(whiptail --title "Menu Dialog" --menu "Choose your favorite programming language." 15 60 2 \
+            "1" "默认家目录" \
+	    "2" "手动指定"  3>&1 1>&2 2>&3)
+	local exitstate=$?
+    	if [[ $OPTION -eq 2 || $exitstate -ne 0 ]];then 		
+		local root_path=$(whiptail --title "默认目录" --inputbox "请输入默认目录绝对路径(家目录)：" 10 60 /var/ftp/ 3>&1 1>&2 2>&3)  #根目录选择
+		echo "$root_path"
+	fi 
+   }	
+   	# function per   参数： $1:权限    $2:默认根目录(可以省略)
+	
+	local permission=$(whiptail --title "匿名用户配置"   --radiolist \
+	"请选择权限(回车确认)：" 15 60 6 \
+	"rwx" "增删改" ON  \
+	"rwx_NODown" "增删改，不能下载" OFF \
+	"rwx_NORemove" "增和改，不能删除" OFF \
+	"rwxSBIT" "增删改，只对自己文件有效" OFF \
+	"rwxSBIT_NODown" "增和改，只对自己的文件有效,不能下载" OFF \
+	"user_auth" "用户授权" OFF \
+	3>&1 1>&2 2>&3) #权限选择
+	
+	local tag=false	
+	if [ "$permission" != "user_auth" ];then
+		per  $permission  $(chroot_path)
+		tag=true
+	fi	
+
+	if [[ "$permission" == "user_auth" || $tag == "true"   ]];then	#用户验证
+	# function	local_user_dir_permission  参数:  $1:用户   $2：用户组（可以省略，省略表明未指定默认目录）
+	  
+	local user_name=$(whiptail --title "用户授权" --inputbox "请输入需要授权的用户名：" 10 60  3>&1 1>&2 2>&3)  #根目录选择
+	 if ! id $user_name ;then 
+		echo  -e  "\033[31m$user_name 用户不存在\033[0m"
+		exit
+	 fi
+         local_user_dir_permission $user_name  $local_ftpgroup
+	fi
+		
 }
 
 #：###########################用户禁锢白名单########################################
@@ -301,9 +366,6 @@ account  sufficient  pam_userdb.so  db=$chroot_vsftpd/vir_user
 	echo "虚拟用户开启完毕！！！"
 }
 
-#local_conf rwxSBIT_NODown zhangsan  
-open_virtual_login vsftpd.pam
-#open_chroot_list 
 
 function start_service {
 
@@ -316,7 +378,72 @@ function start_service {
 	fi
 
 }
-start_service
+
+
+
+###############################################whiptail图形化工具#################
+function menu {
+	case $1 in
+	1) init 	;;
+	2) init;anon_conf 	;;
+	3) init;local_conf	;;
+	4) init;open_virtual_login 	;;
+	5) 	;;
+	6) 	;;
+	7)  echo "log_tag=true"; return 0 ;;
+	esac	
+	start_service
+}
+
+function man {
+OPTION=$(whiptail --title "vftpd服务配置管理" --menu "请选择你以下功能：" 15 70 7\
+    "1" "一键配置(默认)" \
+    "2" "匿名用户配置(默认：只读；根目录:/var/ftp/)" \
+    "3" "本地用户配置(默认：增删改;家目录;用户禁锢;)" \
+    "4" "虚拟用户配置(默认：不配置)" \
+    "5" "黑名单(默认：启用)" \
+    "6" "白名单(默认：禁用)" \
+    "7" "查看日志(位置:/var/log/ftp_manager.log)" 3>&1 1>&2 2>&3)
+    exitstatus=$?				#退出的状态
+    if [ $exitstatus = 0 ]; then
+ 	menu  $OPTION
+    else
+        echo "退出成功！！"
+    fi
+
+}
+
+
+ftp_managerlog=$(man)
+
+function log {    #日志纪录功能
+
+	log_tag=$( echo "$ftp_managerlog" | grep -c "log_tag=true")
+
+	if [ $log_tag -ne 0 ];then
+		cat $ftp_manager_log
+		echo   ${ftp_managerlog//"tag_log=true"/"" } $>/dev/null
+		exit	
+	fi
+
+
+	echo -e "\033[34m--------------------------------------------------------\033[0m" >> $ftp_manager_log
+	echo -e "\033[34m$(date)\033[0m" >> $ftp_manager_log
+	IFS=$'\n'
+	for item in $ftp_managerlog
+	do
+		echo $item 
+		echo $item >>$ftp_manager_log
+	done
+
+}
+
+log
+
+
+
+
+
 
 
 
