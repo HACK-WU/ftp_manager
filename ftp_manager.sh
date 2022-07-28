@@ -21,6 +21,9 @@ ftp_manager_log=/var/log/ftp_manager.log	#日志功能
 
 chroot_vsftpd="/etc/vsftpd"     #vsftpd服务，根目录
 config_file="$chroot_vsftpd/vsftpd.conf"  #vsftpd服务，配置文件
+FTPUSERS="$chroot_vsftpd/ftpusers"	  #黑名单路径
+USER_LIST="$chroot_vsftpd/user_list"
+
 
 NODown="download_enable=NO\n"	#禁止下载
 NORemove="cmds_allowed=ABOR,CWD,LIST,MDTM,MKD,NLST,PASS,PASV,PORT,PWD,QUIT,RETR,RNFR,RNTO,SIZE,STOR,TYPE,USER,REST,CDUP,HELP,MODE,NOOP,REIN,STAT,STOU,STRU,SYST,FEAT\n"			#禁止删除
@@ -52,6 +55,7 @@ listen=NO\n
 listen_ipv6=YES\n
 pam_service_name=vsftpd\n
 userlist_enable=YES\n
+userlist_deny=YES\n
 tcp_wrappers=YES\n
 reverse_lookup_enable=NO\n
 user_config_dir=/etc/vsftpd/vsftpd_user_conf\n
@@ -286,7 +290,54 @@ function open_chroot_list {   #开启用户禁锢，白名单
 	echo "用户禁锢，白名单创建完成: $chroot_vsftpd/chroot_list"
 }
 
+##############################黑名单配置##############################################
+function fun1 {
 
+		whiptail --title "YES/NO" --yesno "user already exits" 10 60 
+		echo "你的选择：$?"
+
+}
+function ftpusers {	
+	local user_name=$(whiptail --title "添加用户到黑名单" --inputbox "请输入禁止登录的用户名：" 10 60  3>&1 1>&2 2>&3)  #根目录选择
+	local num=$( cat $FTPUSERS| grep -c "$user_name" )
+	
+	if [ $num -eq 0 ];then
+		echo "$user_name" >> $FTPUSERS
+		echo "$user_name写入成功！！"
+	else
+		echo "$user_name用户已存在" 
+	fi	
+	#echo "num值为：$num"
+}
+#############################白名单配置##################################
+
+function userlist {	
+	local num=$( grep -c "userlist_deny=YES" $config_file )
+	echo "num :$num"	
+	if [ $num -eq 1 ];then
+		local operation="启用白名单"
+		local old_state="userlist_deny=YES"
+		local new_state="userlist_deny=NO"
+		
+	else
+		local operation="禁用白名单"
+		local old_state="userlist_deny=NO"
+		local new_state="userlist_deny=YES"
+	fi
+
+
+	OPTION=$(whiptail --title "白名单配置" --menu "请选择对应的选项：" 15 60 4 \
+	    "1" "$operation" \
+	    "2" "添加白名单" 3>&1 1>&2 2>&3)
+	echo "option: $OPTION"
+
+	 if [ $OPTION -eq 1  ];then
+		sed -i "s/$old_state/$new_state/g" $config_file	#更改配置文件
+		echo "$operation成功！！"
+	fi
+	
+
+}
 ##################################虚拟用户配置################################
 function create_vir_user_db {  #创建虚拟用户密码，数据库类型文件
 	local user_and_passwd="hack\n123\nlisi\n123\naa\n123\nbb\n456"
@@ -311,6 +362,7 @@ function create_proxy_user {  #创建代理用户
 			id $new_name &> /dev/null  && echo "$new_name 已经存在"||break	#new_name如果存在，再输入一次。否则退出循环
 		done
 		useradd -d $proxy_user_home -s /sbin/nologin $new_name &> /dev/null #给系统添加这个用户
+		setfacl -m u:$new_name:rwx $proxy_user_home
 		echo "代理用户$new_name创建完毕"
 		proxy_user=$new_name
 	}
@@ -323,24 +375,33 @@ function create_proxy_user {  #创建代理用户
 			case $choose in
 			y) get_proxy_user; break ;;
 			n) 	useradd -d $proxy_user_home -s /sbin/nologin $proxy_user
+				setfacl -m u:$proxy_user:rwx $proxy_user_home
 				echo "创建默认代理用户名为： $proxy_user"
 				break ;;
 			*)  echo "输入错误！"  ;;
 			esac
-		done	
+		done			
 	else
 		useradd -d $proxy_user_home -s /sbin/nologin $proxy_user
+		setfacl -m u:$new_name:rwx $proxy_user_home		
 		echo "创建默认代理用户名为： $proxy_user"
 	fi	
+	chmod 755 $proxy_user_home
 	echo "家目录为：$proxy_user_home"
 }
 
-function open_virtual_login {  #开启虚拟用户登录
+function virtual_conf {  #虚拟用户配置
+   function open_virtual_login {	#开启虚拟用户登录，
+	#参数: $1 用户认证文件名：vsftpd.pam或者是vsftpd.pam2
+	#	-vsftpd.pam	开启虚拟用户登录，但不支持本地用户登录
+	#       -vaftpd.pam2	开启虚拟用户登录，同时支持本地用户登录
+
 	local vsftpd_pam=/etc/pam.d/vsftpd.pam
 	local vsftpd_pam2=/etc/pam.d/vsftpd.pam2
 	local vsftpd=/etc/pam.d/vsftpd
 	local pam_service=pam_service_name
 	local pam_conf=$1	#$0参数，是vsftpd.pam或者是vsftpd.pam2
+	[ $pam_conf == "vsftpd.pam" ] && echo -e "\033[34m不支持本地用户登录\033[0m"||echo -e "\033[34m支持本地用户登录\033[0m"
 	[[ "$pam_conf" != "vsftpd.pam" && "$pam_conf" != "vsftpd.pam2"    ]] && echo '$1 参数错误！'&& exit
 	[ -e $vsftpd_pam ] && echo -e "\033[31m警告：$vsftpd_pam 已经存在，请手动删除，否则将使用原配置内容\033[0m"
 	[ -e $vsftpd_pam2 ] && echo -e  "\033[31m警告：$vsftpd_pam2 已经存在，请手动删除，否则将使用原配置内容\033[0m"
@@ -363,10 +424,19 @@ account  sufficient  pam_userdb.so  db=$chroot_vsftpd/vir_user
 	echo "guest_enable=YES" >> $config_file
 	echo "guest_username=$proxy_user" >> $config_file
 	echo "virtual_use_local_privs=NO" >> $config_file
-	echo "虚拟用户开启完毕！！！"
+	echo -e  "\033[33m虚拟用户开启完毕！！！\033[0m"
+    }
+
+  OPTION=$(whiptail --title "虚拟用户配置" --radiolist "请选择：" 15 60 2 \
+    "vsftpd.pam" "不支持本地用户登录" ON \
+    "vsftpd.pam2" "支持本地用户登录" OFF  3>&1 1>&2 2>&3)
+	
+	open_virtual_login $OPTION
+#  	echo "你得选择是：$OPTION"
 }
 
 
+###########################################启动服务###############################
 function start_service {
 
 	if systemctl status vsftpd > /dev/null ;then
@@ -378,25 +448,45 @@ function start_service {
 	fi
 
 }
+######################################显示运行信息###############################
+function log_sub {    #日志纪录功能
+	str=""
 
-
+	echo -e "\033[34m--------------------------------------------------------------------\033[0m"
+	IFS=$'\n'
+	for item in $logsub
+	do
+		echo $item 
+		str="$str\n$item"
+	done
+	echo -e  $str
+	whiptail --textbox /dev/stdin 40 80 <<<"$(echo -e "hello")"
+	sleep 2
+	
+}
 
 ###############################################whiptail图形化工具#################
+logsub=$(init)
+echo -e "\033[34m\n\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\033[0m" >> $ftp_manager_log
+echo -e "\033[34m$(date)\033[0m" >> $ftp_manager_log
+echo $logsub >>$ftp_manager_log
 function menu {
 	case $1 in
-	1) init 	;;
-	2) init;anon_conf 	;;
-	3) init;local_conf	;;
-	4) init;open_virtual_login 	;;
-	5) 	;;
-	6) 	;;
+	1)  	;;
+	2) logsub=$(anon_conf);log_sub ;;
+	3) logsub=$(local_conf);log_sub	;;
+	4) logsub=$(virtual_conf);log_sub ;;
+	5) logsub=$(ftpusers);log_sub;exit ;;
+	6) logsub=$(userlist);log_sub;exit ;;
 	7)  echo "log_tag=true"; return 0 ;;
 	esac	
-	start_service
+#	start_service
 }
 
 function man {
-OPTION=$(whiptail --title "vftpd服务配置管理" --menu "请选择你以下功能：" 15 70 7\
+while : 
+do
+OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下功能：" 15 70 7\
     "1" "一键配置(默认)" \
     "2" "匿名用户配置(默认：只读；根目录:/var/ftp/)" \
     "3" "本地用户配置(默认：增删改;家目录;用户禁锢;)" \
@@ -409,13 +499,15 @@ OPTION=$(whiptail --title "vftpd服务配置管理" --menu "请选择你以下�
  	menu  $OPTION
     else
         echo "退出成功！！"
+	break		#退出循环
     fi
-
+done
+start_service	#启动服务
 }
 
 
 ftp_managerlog=$(man)
-
+#man
 function log {    #日志纪录功能
 
 	log_tag=$( echo "$ftp_managerlog" | grep -c "log_tag=true")
@@ -426,9 +518,6 @@ function log {    #日志纪录功能
 		exit	
 	fi
 
-
-	echo -e "\033[34m--------------------------------------------------------\033[0m" >> $ftp_manager_log
-	echo -e "\033[34m$(date)\033[0m" >> $ftp_manager_log
 	IFS=$'\n'
 	for item in $ftp_managerlog
 	do
