@@ -467,10 +467,12 @@ function log_sub {    #日志纪录功能
 }
 
 ###############################################whiptail图形化工具#################
+function init_sub {
 logsub=$(init)
 echo -e "\033[34m\n\n++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++\033[0m" >> $ftp_manager_log
 echo -e "\033[34m$(date)\033[0m" >> $ftp_manager_log
 echo $logsub >>$ftp_manager_log
+}
 function menu {
 	case $1 in
 	1)  	;;
@@ -486,7 +488,8 @@ function menu {
 }
 
 function man {
-while : 
+local init_sub_tag=false
+while :
 do
 OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下功能：" 15 70 8\
     "1" "一键配置(默认)" \
@@ -499,6 +502,10 @@ OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下�
     "8" "查看日志(位置:/var/log/ftp_manager.log)" 3>&1 1>&2 2>&3)
     exitstatus=$?				#退出的状态
     if [ $exitstatus = 0 ]; then
+	if [[ $OPTION -le 4  && "$init_sub_tag" == "false" ]];then
+		init_sub_tag="true"
+		init_sub
+	fi
  	menu  $OPTION
     else
         echo "退出成功！！"
