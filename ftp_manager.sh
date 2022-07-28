@@ -340,11 +340,12 @@ function userlist {
 }
 ##################################虚拟用户配置################################
 function create_vir_user_db {  #创建虚拟用户密码，数据库类型文件
-	local user_and_passwd="hack\n123\nlisi\n123\naa\n123\nbb\n456"
-
-	local vir_user_txt="$chroot_vsftpd/vir_user.txt"	#用户密码，明文文件
-	> $vir_user_txt
-	[ -e $vir_user_txt ] && echo -e "$user_and_passwd"  >> $vir_user_txt || echo -e "$user_and_passwd" > $vir_user_txt	#存在，就追加，否则就覆盖 	
+	read -p "手动创建用户密码文件(奇数行：用户名；偶数行：密码)，然后输入文件的路径: "  vir_user_txt
+	if [ !  -f $vir_user_txt ];then
+		echo -e  "\033[31m该密码文件$vir_user_txt不存在,退出程序！\033[0m"
+		exit
+	fi
+	
 	db_load -T -t hash -f $vir_user_txt  $chroot_vsftpd/vir_user.db	#数据加密，并产生数据库类型文件
 	
 	echo "数据库类型文件，创建完毕：$chroot_vsftpd/vir_user.db"	
@@ -427,10 +428,16 @@ account  sufficient  pam_userdb.so  db=$chroot_vsftpd/vir_user
 	echo -e  "\033[33m虚拟用户开启完毕！！！\033[0m"
     }
 
-  OPTION=$(whiptail --title "虚拟用户配置" --radiolist "请选择：" 15 60 2 \
+  OPTION=$(whiptail --title "虚拟用户配置" --radiolist "请选择：" 15 60 3\
     "vsftpd.pam" "不支持本地用户登录" ON \
-    "vsftpd.pam2" "支持本地用户登录" OFF  3>&1 1>&2 2>&3)
-	
+    "vsftpd.pam2" "支持本地用户登录" OFF \
+    "change_vir_passwd" "更改用户密码文件" OFF 3>&1 1>&2 2>&3)
+    
+  if [ "$OPTION" == "change_vir_passwd" ];then
+	create_vir_user_db	#创建新的数据库类型文件
+	exit
+    fi
+    	
 	open_virtual_login $OPTION
 #  	echo "你得选择是：$OPTION"
 }
@@ -450,18 +457,12 @@ function start_service {
 }
 ######################################显示运行信息###############################
 function log_sub {    #日志纪录功能
-	str=""
-
 	echo -e "\033[34m--------------------------------------------------------------------\033[0m"
 	IFS=$'\n'
 	for item in $logsub
 	do
 		echo $item 
-		str="$str\n$item"
 	done
-	echo -e  $str
-	whiptail --textbox /dev/stdin 40 80 <<<"$(echo -e "hello")"
-	sleep 2
 	
 }
 
@@ -478,7 +479,8 @@ function menu {
 	4) logsub=$(virtual_conf);log_sub ;;
 	5) logsub=$(ftpusers);log_sub;exit ;;
 	6) logsub=$(userlist);log_sub;exit ;;
-	7)  echo "log_tag=true"; return 0 ;;
+	7) logsub=$(open_chroot_list);log_sub;exit ;;
+	8)  echo "log_tag=true"; return 0 ;;
 	esac	
 #	start_service
 }
@@ -486,14 +488,15 @@ function menu {
 function man {
 while : 
 do
-OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下功能：" 15 70 7\
+OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下功能：" 15 70 8\
     "1" "一键配置(默认)" \
     "2" "匿名用户配置(默认：只读；根目录:/var/ftp/)" \
     "3" "本地用户配置(默认：增删改;家目录;用户禁锢;)" \
     "4" "虚拟用户配置(默认：不配置)" \
     "5" "黑名单(默认：启用)" \
     "6" "白名单(默认：禁用)" \
-    "7" "查看日志(位置:/var/log/ftp_manager.log)" 3>&1 1>&2 2>&3)
+    "7" "用户禁锢白名单(默认：禁用)" \
+    "8" "查看日志(位置:/var/log/ftp_manager.log)" 3>&1 1>&2 2>&3)
     exitstatus=$?				#退出的状态
     if [ $exitstatus = 0 ]; then
  	menu  $OPTION
