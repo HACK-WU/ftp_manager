@@ -176,15 +176,15 @@ function anon_conf {
 ##############################本地用户配置########################################
 local_ftpgroup=ftpgroup
 function local_conf {	
-	
+   local local_root=NO	
    function per {	#参数： $1:权限    $2:默认根目录(可以省略)
 	[ $(grep -c "/sbin/nologin" /etc/shells  ) -eq 0 ] &&  echo "/sbin/nologin" >> /etc/shells 
 	local permission=$1				#权限
 	set +u
 		if [ -z $2  ];then
-			local local_root=NO
+			local_root=NO
 		else
-			local local_root=$2 
+			local_root=$2 
 			echo -e "local_root=$local_root" >> $config_file;
 			mkdir -p  $local_root
 		fi
@@ -250,10 +250,10 @@ function local_conf {
    }	
    	# function per   参数： $1:权限    $2:默认根目录(可以省略)
 	
-	local permission=$(whiptail --title "匿名用户配置"   --radiolist \
+	local permission=$(whiptail --title "本地用户配置"   --radiolist \
 	"请选择权限(回车确认)：" 15 60 6 \
 	"rwx" "增删改" ON  \
-	"rwx_NODown" "增删改，不能下载" OFF \
+	"rwx_NODown" "增和改，不能下载和删除" OFF \
 	"rwx_NORemove" "增和改，不能删除" OFF \
 	"rwxSBIT" "增删改，只对自己文件有效" OFF \
 	"rwxSBIT_NODown" "增和改，只对自己的文件有效,不能下载" OFF \
@@ -274,7 +274,10 @@ function local_conf {
 		echo  -e  "\033[31m$user_name 用户不存在\033[0m"
 		exit
 	 fi
-         local_user_dir_permission $user_name  $local_ftpgroup
+	if [ "$local_root" != "NO" ];then
+         	local_user_dir_permission $user_name  $local_ftpgroup
+		echo -e   "\033[31m$user_name授权完毕！！\033[0m"
+	fi
 	fi
 		
 }
@@ -331,11 +334,18 @@ function userlist {
 	    "2" "添加白名单" 3>&1 1>&2 2>&3)
 	echo "option: $OPTION"
 
-	 if [ $OPTION -eq 1  ];then
+	if [ $OPTION -eq 1  ];then
 		sed -i "s/$old_state/$new_state/g" $config_file	#更改配置文件
-		echo "$operation成功！！"
+		echo "$operation成功！！"	
 	fi
-	
+	if [ $OPTION -eq 2  ];then
+  		local user_name=$(whiptail --title "添加用户到白名单" --inputbox "请输入白名单用户名：" 10 60  3>&1 1>&2 2>&3)  	
+		echo "$user_name" >> /etc/vsftpd/user_list
+		echo "$user_name添加白名单用户成功！！"
+	fi
+
+
+
 
 }
 ##################################虚拟用户配置################################
@@ -489,6 +499,11 @@ function menu {
 
 function man {
 local init_sub_tag=false
+local str="禁用"
+local num=$( grep -c "userlist_deny=YES" $config_file )
+if [ "$num" -ne 1  ];then
+      str="启用"
+fi
 while :
 do
 OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下功能：" 15 70 8\
@@ -497,7 +512,7 @@ OPTION=$(whiptail --title "vftpd服务配置管理"  --menu "请选择你以下�
     "3" "本地用户配置(默认：增删改;家目录;用户禁锢;)" \
     "4" "虚拟用户配置(默认：不配置)" \
     "5" "黑名单(默认：启用)" \
-    "6" "白名单(默认：禁用)" \
+    "6" "白名单(默认：$str)" \
     "7" "用户禁锢白名单(默认：禁用)" \
     "8" "查看日志(位置:/var/log/ftp_manager.log)" 3>&1 1>&2 2>&3)
     exitstatus=$?				#退出的状态
