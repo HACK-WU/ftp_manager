@@ -18,7 +18,7 @@
 
 - 菜单页面：
 
-  ![image-20230321143204602](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321143204602.png)
+  ![image-20230321144209388](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321144209388.png)
 
 ## 运行环境
 
@@ -32,18 +32,18 @@
 
 - **匿名用户配置**：
 
-  - ![image-20230321143250532](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321143250532.png)
+  ![image-20230321144524428](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321144524428.png)
 
-  - 选中对应的权限，回车会进入根目录设置选项：
+  选中对应的权限，回车会进入根目录设置选项：
 
-    ​	![image-20230321143412914](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321143412914.png)
+  ​	![image-20230321143412914](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321143412914.png)
 
-    - 可以使用默认的目录，也可以自己设置
+  - 可以使用默认的目录，也可以自己设置
 
-  - 回车即可配置，成功，然后会返回首页。
+  回车即可配置，成功，然后会返回首页。
 
-    - 可以继续配置，比如本地用户登录配置
-    - 虚拟用户登录配置，写入白名单等，都会生效。
+  - 可以继续配置，比如本地用户登录配置
+  - 虚拟用户登录配置，写入白名单等，都会生效。
 
 - **本地用户配置**
 
@@ -62,4 +62,3 @@
     - ![image-20230321143653896](https://hackwu-images-1305994922.cos.ap-nanjing.myqcloud.com/images/image-20230321143653896.png)
 
   
-
